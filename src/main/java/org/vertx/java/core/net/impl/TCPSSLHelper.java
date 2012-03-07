@@ -16,7 +16,7 @@
 
 package org.vertx.java.core.net.impl;
 
-import org.jboss.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.channel.socket.nio.NioSocketChannel;
 import org.vertx.java.core.logging.Logger;
 import org.vertx.java.core.logging.impl.LoggerFactory;
 
@@ -85,13 +85,14 @@ public class TCPSSLHelper {
   thread if it's not the right one.
   This code will go away if Netty acts like a proper event loop.
    */
-  public void runOnCorrectThread(NioSocketChannel nch, Runnable runnable) {
-    if (Thread.currentThread() != nch.getWorker().getThread()) {
-      nch.getWorker().scheduleOtherTask(runnable);
-    } else {
-      runnable.run();
-    }
-  }
+//  public void runOnCorrectThread(NioSocketChannel nch, Runnable runnable) {
+//    if (Thread.currentThread() != nch.getWorker().getThread()) {
+//      //nch.getWorker().scheduleOtherTask(runnable);
+//      nch.getPipeline().execute(runnable);
+//    } else {
+//      runnable.run();
+//    }
+//  }
 
   public Map<String, Object> generateConnectionOptions() {
     Map<String, Object> options = new HashMap<>();

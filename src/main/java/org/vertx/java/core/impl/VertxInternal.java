@@ -16,8 +16,9 @@
 
 package org.vertx.java.core.impl;
 
-import org.jboss.netty.channel.socket.nio.NioWorkerPool;
+import io.netty.channel.socket.nio.NioWorkerPool;
 import org.vertx.java.core.Vertx;
+import org.vertx.java.core.net.impl.NetServerWorkerPool;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;

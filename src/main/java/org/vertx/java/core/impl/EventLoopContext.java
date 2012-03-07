@@ -16,7 +16,7 @@
 
 package org.vertx.java.core.impl;
 
-import org.jboss.netty.channel.socket.nio.NioWorker;
+import io.netty.channel.socket.nio.NioWorker;
 
 /**
  * @author <a href="http://tfox.org">Tim Fox</a>
@@ -31,6 +31,7 @@ public class EventLoopContext extends BaseContext {
 
   public void execute(Runnable task) {
     worker.scheduleOtherTask(wrapTask(task));
+    // use channel.getPipeline().execute
   }
 
   public NioWorker getWorker() {

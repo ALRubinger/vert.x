@@ -16,13 +16,13 @@
 
 package org.vertx.java.core.http.impl;
 
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.buffer.ChannelBuffers;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelFuture;
-import org.jboss.netty.handler.codec.http.DefaultHttpChunk;
-import org.jboss.netty.handler.codec.http.HttpChunk;
-import org.jboss.netty.handler.codec.http.HttpRequest;
+import io.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ChannelBuffers;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
+import io.netty.handler.codec.http.DefaultHttpChunk;
+import io.netty.handler.codec.http.HttpChunk;
+import io.netty.handler.codec.http.HttpRequest;
 import org.vertx.java.core.Handler;
 import org.vertx.java.core.SimpleHandler;
 import org.vertx.java.core.Vertx;
@@ -61,13 +61,12 @@ class ServerConnection extends AbstractConnection {
   private boolean sentCheck;
   private final Queue<Object> pending = new LinkedList<>();
 
-  ServerConnection(Channel channel, Context context, Thread th) {
-    super(channel, context, th);
+  ServerConnection(Channel channel, Context context) {
+    super(channel, context);
   }
 
   @Override
   public void pause() {
-    checkThread();
     if (!paused) {
       paused = true;
     }
@@ -75,7 +74,6 @@ class ServerConnection extends AbstractConnection {
 
   @Override
   public void resume() {
-    checkThread();
     if (paused) {
       paused = false;
       checkNextTick();

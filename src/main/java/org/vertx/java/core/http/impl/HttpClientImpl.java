@@ -16,26 +16,26 @@
 
 package org.vertx.java.core.http.impl;
 
-import org.jboss.netty.bootstrap.ClientBootstrap;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelFuture;
-import org.jboss.netty.channel.ChannelFutureListener;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelPipeline;
-import org.jboss.netty.channel.ChannelPipelineFactory;
-import org.jboss.netty.channel.ChannelStateEvent;
-import org.jboss.netty.channel.Channels;
-import org.jboss.netty.channel.ExceptionEvent;
-import org.jboss.netty.channel.MessageEvent;
-import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
-import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
-import org.jboss.netty.channel.socket.nio.NioSocketChannel;
-import org.jboss.netty.handler.codec.http.HttpChunk;
-import org.jboss.netty.handler.codec.http.HttpChunkTrailer;
-import org.jboss.netty.handler.codec.http.HttpRequestEncoder;
-import org.jboss.netty.handler.codec.http.HttpResponse;
-import org.jboss.netty.handler.ssl.SslHandler;
+import io.netty.bootstrap.ClientBootstrap;
+import io.netty.buffer.ChannelBuffer;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelFutureListener;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelPipeline;
+import io.netty.channel.ChannelPipelineFactory;
+import io.netty.channel.ChannelStateEvent;
+import io.netty.channel.Channels;
+import io.netty.channel.ExceptionEvent;
+import io.netty.channel.MessageEvent;
+import io.netty.channel.SimpleChannelUpstreamHandler;
+import io.netty.channel.socket.nio.NioClientSocketChannelFactory;
+import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.codec.http.HttpChunk;
+import io.netty.handler.codec.http.HttpChunkTrailer;
+import io.netty.handler.codec.http.HttpRequestEncoder;
+import io.netty.handler.codec.http.HttpResponse;
+import io.netty.handler.ssl.SslHandler;
 import org.vertx.java.core.Handler;
 import org.vertx.java.core.SimpleHandler;
 import org.vertx.java.core.buffer.Buffer;
@@ -50,6 +50,7 @@ import org.vertx.java.core.impl.EventLoopContext;
 import org.vertx.java.core.impl.VertxInternal;
 import org.vertx.java.core.logging.Logger;
 import org.vertx.java.core.logging.impl.LoggerFactory;
+import org.vertx.java.core.net.impl.NetServerWorkerPool;
 import org.vertx.java.core.net.impl.TCPSSLHelper;
 
 import javax.net.ssl.SSLEngine;
@@ -57,6 +58,7 @@ import javax.net.ssl.SSLHandshakeException;
 import java.net.InetSocketAddress;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 
 public class HttpClientImpl {
 
@@ -72,7 +74,7 @@ public class HttpClientImpl {
   private String host = "localhost";
   private final ConnectionPool<ClientConnection> pool = new ConnectionPool<ClientConnection>() {
     protected void connect(Handler<ClientConnection> connectHandler, Context context) {
-      internalConnect(connectHandler, context);
+      internalConnect(connectHandler);
     }
   };
   private boolean keepAlive = true;
@@ -323,12 +325,25 @@ public class HttpClientImpl {
     }
   }
 
-  private void internalConnect(final Handler<ClientConnection> connectHandler, final Context context) {
+
+  private void internalConnect(final Handler<ClientConnection> connectHandler) {
 
     if (bootstrap == null) {
+      //Client events should always be handled by the context that created it
+      NetServerWorkerPool pool = new NetServerWorkerPool();
+      EventLoopContext ectx;
+      if (ctx instanceof EventLoopContext) {
+        //It always will be
+        ectx = (EventLoopContext)ctx;
+      } else {
+        ectx = null;
+      }
+      pool.addWorker(ectx.getWorker());
+
       channelFactory = new NioClientSocketChannelFactory(
           VertxInternal.instance.getAcceptorPool(),
-          VertxInternal.instance.getWorkerPool());
+          1,
+          pool);
       bootstrap = new ClientBootstrap(channelFactory);
 
       tcpHelper.checkSSL();
@@ -348,14 +363,6 @@ public class HttpClientImpl {
         }
       });
     }
-    EventLoopContext ectx;
-    if (context instanceof EventLoopContext) {
-      //It always will be
-      ectx = (EventLoopContext)context;
-    } else {
-      ectx = null;
-    }
-    channelFactory.setWorker(ectx.getWorker());
     bootstrap.setOptions(tcpHelper.generateConnectionOptions());
     ChannelFuture future = bootstrap.connect(new InetSocketAddress(host, port));
     future.addListener(new ChannelFutureListener() {
@@ -377,7 +384,7 @@ public class HttpClientImpl {
                 if (channelFuture.isSuccess()) {
                   connected(ch, connectHandler);
                 } else {
-                  failed(ch, new SSLHandshakeException("Failed to create SSL connection"));
+                  failed(new SSLHandshakeException("Failed to create SSL connection"));
                 }
               }
             });
@@ -386,38 +393,29 @@ public class HttpClientImpl {
           }
 
         } else {
-          failed(ch, channelFuture.getCause());
+          failed(channelFuture.getCause());
         }
       }
     });
   }
 
-  private void connected(final NioSocketChannel ch, final Handler<ClientConnection> connectHandler) {
-    tcpHelper.runOnCorrectThread(ch, new Runnable() {
-      public void run() {
-        final ClientConnection conn = new ClientConnection(HttpClientImpl.this, ch,
-            host + ":" + port, tcpHelper.isSSL(), keepAlive, ctx,
-            Thread.currentThread());
-        conn.closedHandler(new SimpleHandler() {
-          public void handle() {
-            pool.connectionClosed();
-          }
-        });
-        connectionMap.put(ch, conn);
-        VertxInternal.instance.setContext(ctx);
-        connectHandler.handle(conn);
+  private void connected(NioSocketChannel ch, Handler<ClientConnection> connectHandler) {
+    ClientConnection conn = new ClientConnection(HttpClientImpl.this, ch,
+        host + ":" + port, tcpHelper.isSSL(), keepAlive, ctx);
+    conn.closedHandler(new SimpleHandler() {
+      public void handle() {
+        pool.connectionClosed();
       }
     });
+    connectionMap.put(ch, conn);
+    VertxInternal.instance.setContext(ctx);
+    connectHandler.handle(conn);
   }
 
-  private void failed(NioSocketChannel ch, final Throwable t) {
+  private void failed(final Throwable t) {
     if (t instanceof Exception && exceptionHandler != null) {
-      tcpHelper.runOnCorrectThread(ch, new Runnable() {
-        public void run() {
-          VertxInternal.instance.setContext(ctx);
-          exceptionHandler.handle((Exception) t);
-        }
-      });
+      VertxInternal.instance.setContext(ctx);
+      exceptionHandler.handle((Exception) t);
     } else {
       log.error("Unhandled exception", t);
     }
@@ -430,36 +428,24 @@ public class HttpClientImpl {
       final NioSocketChannel ch = (NioSocketChannel) e.getChannel();
       final ClientConnection conn = connectionMap.remove(ch);
       if (conn != null) {
-        tcpHelper.runOnCorrectThread(ch, new Runnable() {
-          public void run() {
-            conn.handleClosed();
-          }
-        });
+        conn.handleClosed();
       }
     }
 
     @Override
     public void channelInterestChanged(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
-      final NioSocketChannel ch = (NioSocketChannel) e.getChannel();
-      final ClientConnection conn = connectionMap.get(ch);
-      tcpHelper.runOnCorrectThread(ch, new Runnable() {
-        public void run() {
-          conn.handleInterestedOpsChanged();
-        }
-      });
+      NioSocketChannel ch = (NioSocketChannel) e.getChannel();
+      ClientConnection conn = connectionMap.get(ch);
+      conn.handleInterestedOpsChanged();
     }
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e) {
-      final NioSocketChannel ch = (NioSocketChannel) e.getChannel();
-      final ClientConnection conn = connectionMap.get(ch);
-      final Throwable t = e.getCause();
+      NioSocketChannel ch = (NioSocketChannel) e.getChannel();
+      ClientConnection conn = connectionMap.get(ch);
+      Throwable t = e.getCause();
       if (conn != null && t instanceof Exception) {
-        tcpHelper.runOnCorrectThread(ch, new Runnable() {
-          public void run() {
-            conn.handleException((Exception) t);
-          }
-        });
+        conn.handleException((Exception) t);
       } else {
         // Ignore - any exceptions before a channel exists will be passed manually via the failed(...) method
       }

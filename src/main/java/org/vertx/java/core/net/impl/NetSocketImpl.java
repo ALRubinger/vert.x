@@ -16,11 +16,11 @@
 
 package org.vertx.java.core.net.impl;
 
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.buffer.ChannelBuffers;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelFuture;
-import org.jboss.netty.util.CharsetUtil;
+import io.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ChannelBuffers;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
+import io.netty.util.CharsetUtil;
 import org.vertx.java.core.Handler;
 import org.vertx.java.core.SimpleHandler;
 import org.vertx.java.core.Vertx;
@@ -41,8 +41,8 @@ public class NetSocketImpl extends NetSocket {
   private Handler<Void> drainHandler;
   private Handler<Message<Buffer>> writeHandler;
 
-  public NetSocketImpl(Channel channel, Context context, Thread th) {
-    super(channel, UUID.randomUUID().toString(), context, th);
+  public NetSocketImpl(Channel channel, Context context) {
+    super(channel, UUID.randomUUID().toString(), context);
     if (EventBus.instance != null) {
       writeHandler = new Handler<Message<Buffer>>() {
         public void handle(Message<Buffer> msg) {
@@ -97,17 +97,14 @@ public class NetSocketImpl extends NetSocket {
   }
 
   public void dataHandler(Handler<Buffer> dataHandler) {
-    checkThread();
     this.dataHandler = dataHandler;
   }
 
   public void endHandler(Handler<Void> endHandler) {
-    checkThread();
     this.endHandler = endHandler;
   }
 
   public void drainHandler(Handler<Void> drainHandler) {
-    checkThread();
     this.drainHandler = drainHandler;
     Vertx.instance.nextTick(new SimpleHandler() {
       public void handle() {
@@ -117,7 +114,6 @@ public class NetSocketImpl extends NetSocket {
   }
 
   public void sendFile(String filename) {
-    checkThread();
     File f = new File(filename);
     super.sendFile(f);
   }
@@ -164,7 +160,6 @@ public class NetSocketImpl extends NetSocket {
   }
 
   private ChannelFuture doWrite(ChannelBuffer buff) {
-    checkThread();
     return channel.write(buff);
   }
 
